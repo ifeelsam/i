@@ -10,32 +10,10 @@ use spl_associated_token_account::get_associated_token_address;
 use std::str::FromStr;
 use base64::Engine;
 
-// Response structures
+// Error response structure
 #[derive(Serialize)]
-struct ApiResponse<T> {
-    success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<T>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
-impl<T> ApiResponse<T> {
-    fn success(data: T) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-        }
-    }
-
-    fn error(message: String) -> ApiResponse<()> {
-        ApiResponse {
-            success: false,
-            data: None,
-            error: Some(message),
-        }
-    }
+struct ErrorResponse {
+    error: String,
 }
 
 // Keypair endpoint
@@ -51,7 +29,7 @@ async fn generate_keypair() -> Result<HttpResponse> {
         pubkey: keypair.pubkey().to_string(),
         secret: bs58::encode(keypair.to_bytes()).into_string(),
     };
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Token create endpoint
@@ -87,12 +65,12 @@ struct AccountInfo {
 async fn create_token(req: web::Json<CreateTokenRequest>) -> Result<HttpResponse> {
     let mint_authority = match Pubkey::from_str(&req.mint_authority) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid mint authority".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid mint authority".to_string() })),
     };
     
     let mint = match Pubkey::from_str(&req.mint) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid mint address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid mint address".to_string() })),
     };
 
     let instruction = spl_instruction::initialize_mint(
@@ -119,7 +97,7 @@ async fn create_token(req: web::Json<CreateTokenRequest>) -> Result<HttpResponse
         instruction_data: base64::engine::general_purpose::STANDARD.encode(&instruction.data),
     };
 
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Token mint endpoint
@@ -134,17 +112,17 @@ struct MintTokenRequest {
 async fn mint_token(req: web::Json<MintTokenRequest>) -> Result<HttpResponse> {
     let mint = match Pubkey::from_str(&req.mint) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid mint address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid mint address".to_string() })),
     };
     
     let destination = match Pubkey::from_str(&req.destination) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid destination address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid destination address".to_string() })),
     };
     
     let authority = match Pubkey::from_str(&req.authority) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid authority address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid authority address".to_string() })),
     };
 
     let instruction = spl_instruction::mint_to(
@@ -172,7 +150,7 @@ async fn mint_token(req: web::Json<MintTokenRequest>) -> Result<HttpResponse> {
         instruction_data: base64::engine::general_purpose::STANDARD.encode(&instruction.data),
     };
 
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Message signing endpoint
@@ -191,17 +169,17 @@ struct SignMessageResponse {
 
 async fn sign_message(req: web::Json<SignMessageRequest>) -> Result<HttpResponse> {
     if req.message.is_empty() || req.secret.is_empty() {
-        return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Missing required fields".to_string())));
+        return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Missing required fields".to_string() }));
     }
 
     let secret_bytes = match bs58::decode(&req.secret).into_vec() {
         Ok(bytes) => bytes,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid secret key format".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid secret key format".to_string() })),
     };
 
     let keypair = match Keypair::from_bytes(&secret_bytes) {
         Ok(kp) => kp,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid secret key".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid secret key".to_string() })),
     };
 
     let message_bytes = req.message.as_bytes();
@@ -213,7 +191,7 @@ async fn sign_message(req: web::Json<SignMessageRequest>) -> Result<HttpResponse
         message: req.message.clone(),
     };
 
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Message verification endpoint
@@ -234,17 +212,17 @@ struct VerifyMessageResponse {
 async fn verify_message(req: web::Json<VerifyMessageRequest>) -> Result<HttpResponse> {
     let pubkey = match Pubkey::from_str(&req.pubkey) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid public key".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid public key".to_string() })),
     };
 
     let signature_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.signature) {
         Ok(bytes) => bytes,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid signature format".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid signature format".to_string() })),
     };
 
     let signature = match solana_sdk::signature::Signature::try_from(signature_bytes.as_slice()) {
         Ok(sig) => sig,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid signature".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid signature".to_string() })),
     };
 
     let message_bytes = req.message.as_bytes();
@@ -256,7 +234,7 @@ async fn verify_message(req: web::Json<VerifyMessageRequest>) -> Result<HttpResp
         pubkey: req.pubkey.clone(),
     };
 
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Send SOL endpoint
@@ -277,16 +255,16 @@ struct SendSolResponse {
 async fn send_sol(req: web::Json<SendSolRequest>) -> Result<HttpResponse> {
     let from_pubkey = match Pubkey::from_str(&req.from) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid from address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid from address".to_string() })),
     };
     
     let to_pubkey = match Pubkey::from_str(&req.to) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid to address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid to address".to_string() })),
     };
 
     if req.lamports == 0 {
-        return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Amount must be greater than 0".to_string())));
+        return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Amount must be greater than 0".to_string() }));
     }
 
     let instruction = system_instruction::transfer(&from_pubkey, &to_pubkey, req.lamports);
@@ -297,7 +275,7 @@ async fn send_sol(req: web::Json<SendSolRequest>) -> Result<HttpResponse> {
         instruction_data: base64::engine::general_purpose::STANDARD.encode(&instruction.data),
     };
 
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Send Token endpoint
@@ -326,21 +304,21 @@ struct SendTokenResponse {
 async fn send_token(req: web::Json<SendTokenRequest>) -> Result<HttpResponse> {
     let destination = match Pubkey::from_str(&req.destination) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid destination address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid destination address".to_string() })),
     };
     
     let mint = match Pubkey::from_str(&req.mint) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid mint address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid mint address".to_string() })),
     };
     
     let owner = match Pubkey::from_str(&req.owner) {
         Ok(pk) => pk,
-        Err(_) => return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Invalid owner address".to_string()))),
+        Err(_) => return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Invalid owner address".to_string() })),
     };
 
     if req.amount == 0 {
-        return Ok(HttpResponse::Ok().json(ApiResponse::<()>::error("Amount must be greater than 0".to_string())));
+        return Ok(HttpResponse::BadRequest().json(ErrorResponse { error: "Amount must be greater than 0".to_string() }));
     }
 
     // Get associated token accounts
@@ -371,7 +349,7 @@ async fn send_token(req: web::Json<SendTokenRequest>) -> Result<HttpResponse> {
         instruction_data: base64::engine::general_purpose::STANDARD.encode(&instruction.data),
     };
 
-    Ok(HttpResponse::Ok().json(ApiResponse::success(response)))
+    Ok(HttpResponse::Ok().json(response))
 }
 
 #[actix_web::main]
