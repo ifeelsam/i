@@ -366,7 +366,7 @@ async fn main() -> std::io::Result<()> {
             .route("/send/sol", web::post().to(send_sol))
             .route("/send/token", web::post().to(send_token))
     })
-    .bind("127.0.0.1:8080")?
+    .bind("127.0.0.1:0000")?
     .run()
     .await
 }
